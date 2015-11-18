@@ -2,14 +2,402 @@
 <html>
 <head lang="en">
 
-    <meta http-equiv="X-UA-Compatible" content="IE=8"/>
-    <meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/>
-    <meta charset="UTF-8"/>
+	<meta charset="utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=10" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-    <title>Github Home</title>
+	<title>Thymeleaf with JavaEE 8</title>
+
+	<link rel="stylesheet" type="text/css" href="styles/common.css" />
+
 
 </head>
 <body>
+
+<h2>Background</h2>
+
+<p>
+	In our organization, (and so as for many others, I believe), Apache Tiles had been a go to framework for rendering
+	template based views. And it worked great with Spring. In recent years, thymeleaf has evolved as a mature and
+	feature
+	rich view technology.
+</p>
+
+<p>Few weeks ago, I started evaluating Thymeleaf as a replacement for Apache Tiles and loved it from the start.
+	Although
+	there are several articles for Thymeleaf + Spring, there aren't many for JavaEE; thus decided to write one myself,
+	for
+	those who are interested.</p>
+
+<p>This article aims to provide a brief introduction about configuring Thymeleaf as a view and templating technology
+	with
+	MVC 1.0 specified in JavaEE 8.</p>
+
+
+<h2>The Groundwork</h2>
+
+<p>Before we start configuring Thymeleaf or MVC, some groundwork is needed to be able to support these frameworks</p>
+
+<h3>web.xml</h3>
+
+<p>Here is the simple web.xml. Since we will be using annotation based configuration, there is not much to include here.</p>
+
+<pre xml:lang="application/xml">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd"
+	version="3.1"&gt;
+
+&lt;/web-app&gt;
+</pre>
+
+<h3>beans.xml</h3>
+
+<p>There is nothing much to this file either, except bean-discovery-mode is set to 'all'. This will ensure that
+	application server configures all the annotated beans.
+</p>
+
+<pre>
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;beans xmlns="http://xmlns.jcp.org/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/beans_1_1.xsd"
+    bean-discovery-mode="all"&gt;
+
+&lt;/beans&gt;
+</pre>
+
+
+<h3>Dependencies</h3>
+
+<p> We would primarily need libraries for MVC 1.0 specification and its reference implementation along with Thymeleaf
+	core ones. Please find links to these libraries in the reference section at the end of the article.
+	Following is the full list of maven dependencies -
+</p>
+
+<pre>
+&lt;dependencies&gt;
+	&lt;dependency&gt;
+		&lt;groupId&gt;javax&lt;/groupId&gt;
+		&lt;artifactId&gt;javaee-api&lt;/artifactId&gt;
+		&lt;version&gt;7.0&lt;/version&gt;
+		&lt;scope&gt;provided&lt;/scope&gt;
+	&lt;/dependency&gt;
+	&lt;dependency&gt;
+		&lt;groupId&gt;org.glassfish.ozark&lt;/groupId&gt;
+		&lt;artifactId&gt;ozark&lt;/artifactId&gt;
+		&lt;version&gt;1.0.0-m02&lt;/version&gt;
+		&lt;scope&gt;provided&lt;/scope&gt;
+	&lt;/dependency&gt;
+
+	&lt;dependency&gt;
+		&lt;groupId&gt;org.thymeleaf&lt;/groupId&gt;
+		&lt;artifactId&gt;thymeleaf&lt;/artifactId&gt;
+		&lt;version&gt;2.1.4.RELEASE&lt;/version&gt;
+	&lt;/dependency&gt;
+
+	&lt;dependency&gt;
+		&lt;groupId&gt;org.apache.logging.log4j&lt;/groupId&gt;
+		&lt;artifactId&gt;log4j-api&lt;/artifactId&gt;
+		&lt;version&gt;2.4.1&lt;/version&gt;
+	&lt;/dependency&gt;
+	&lt;dependency&gt;
+		&lt;groupId&gt;org.apache.logging.log4j&lt;/groupId&gt;
+		&lt;artifactId&gt;log4j-core&lt;/artifactId&gt;
+		&lt;version&gt;2.4.1&lt;/version&gt;
+	&lt;/dependency&gt;
+
+	&lt;dependency&gt;
+		&lt;groupId&gt;org.apache.logging.log4j&lt;/groupId&gt;
+		&lt;artifactId&gt;log4j-slf4j-impl&lt;/artifactId&gt;
+		&lt;version&gt;2.4.1&lt;/version&gt;
+	&lt;/dependency&gt;
+
+&lt;/dependencies&gt;
+
+</pre>
+
+
+<h2>Setting up everything ...</h2>
+
+<h3>Application Setup
+</h3>
+
+<p>First step is to configure our JAX-RS application. Create an Application class (or any other one as you like)
+	annotated with @ApplicationPath. The argument to this annotation will become the application path after deployment.
+</p>
+
+<pre>
+@ApplicationPath("api")
+public class Application extends javax.ws.rs.core.Application
+{
+	private static final Logger logger = LogManager.getLogger(Application.class);
+}
+</pre>
+
+<h3>Controller Setup</h3>
+
+<p>
+	If you are familiar with JAX-RS, setting up MVC 1.0 controller won't be much of a revelation. There are couple of
+	things to notice -
+
+</p>
+
+<ol type="1">
+	<li>Container can inject models (similar to other resources). Controller methods can set the model attributes
+		similar to that of the HashMap
+	</li>
+	<li>Annotate your class with @Controller. This annotation is provided by the MVC 1.0 specification which tells
+		container to treat this class as a MVC controller.
+	</li>
+</ol>
+
+<p>Following is the code for a Controller for serving a login page -</p>
+
+
+<pre>
+@Path("login")
+@Controller
+public class LoginController
+{
+	@Inject
+	Models models;
+
+	private static final Logger logger = LogManager.getLogger(LoginController.class);
+
+	@GET
+	@Produces(MediaType.TEXT_HTML)
+	public String viewLogin()
+	{
+		models.put("company", "Acme Products");
+		models.put("product", "JavaEE 8 Bootstrap");
+		return "login";
+	}
+}
+</pre>
+
+<p>viewLogin method returns a string "login", indicating that a view named "login" is to be served.</p>
+
+<h3>Thymeleaf Setup</h3>
+
+<p>Following code shows how to configure Thymeleaf for serving the content based on the "view" returned from the controller.</p>
+
+<pre>
+@ApplicationScoped
+public class ThymeleafViewEngine
+		extends ViewEngineBase
+{
+
+	@Inject
+	private ServletContext servletContext;
+
+	private TemplateEngine engine;
+
+	@Override
+	public boolean supports(String view)
+	{
+		return !view.contains(".");
+	}
+
+	@PostConstruct
+	public void postConstruct()
+	{
+		TemplateResolver resolver = new ServletContextTemplateResolver();
+
+		resolver.setPrefix("/WEB-INF/layouts/");
+		resolver.setSuffix(".xhtml");
+		resolver.setTemplateMode(StandardTemplateModeHandlers.XHTML.getTemplateModeName());
+		resolver.setCacheable(false);
+
+		engine = new TemplateEngine();
+		engine.setTemplateResolver(resolver);
+	}
+
+	@Override
+	public void processView(ViewEngineContext context) throws ViewEngineException
+	{
+		try
+		{
+			HttpServletRequest request = context.getRequest();
+			HttpServletResponse response = context.getResponse();
+			WebContext ctx = new WebContext(request, response, servletContext, request.getLocale());
+
+			ctx.setVariables(context.getModels());
+			// ctx.setVariable("view", context.getView());
+
+			request.setAttribute("view", context.getView());
+
+			engine.process(context.getView().equals("login") ? "login-template" : "default-template", ctx, response.getWriter());
+		}
+		catch (IOException e)
+		{
+			throw new ViewEngineException(e);
+		}
+	}
+}
+</pre>
+
+<p> Here is what the above code does -</p>
+
+<ol>
+	<li>The class extends ViewEngineBase and is annotated as @ApplicationScoped. This enables this class to be treated as MVC ViewEngine and used when a controller returns a view.</li>
+	<li>postConstruct() method initializes Thymeleaf template engine with template directory and template mode is set as HTML5</li>
+	<li>For production environment, resolver.setCacheable(true) is recommended.</li>
+	<li>processView() method is called when a controller returns a view, in this case "login" view.</li>
+	<li>Thymeleaf templates can't access MVC model directly, thus the model is copied to the Thymeleaf context using ctx.setVariables(context.getModels());</li>
+	<li>In case of Apache Tiles, single view represents a template and its sub components using a XML configuration. To achieve this with Thymeleaf, the view returned by the controller is used to set the template to be used. Thus with context.getView().equals("login") ? "login-template" : "default-template", we configure login-template for "login" view and default-template for rest of the views.</li>
+	<li>We then set view name as a request attribute so that we can tell the template where to look for its view specific content components.</li>
+
+</ol>
+
+<h3>Setting up the view template</h3>
+
+<p>Following code is a typical template for rendering a view. The template used scoped variable ${view} to substitude the value of "view" in the template.</p>
+<pre>
+&lt;!DOCTYPE html&gt;
+&lt;html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org"&gt;
+&lt;head&gt;
+	&lt;title&gt;Bootstrap&lt;/title&gt;
+
+	&lt;meta http-equiv="Content-Type" content="text/html; charset=utf-8" /&gt;
+	&lt;meta http-equiv="X-UA-Compatible" content="IE=Edge" /&gt;
+
+	&lt;!-- Favicon --&gt;
+
+	&lt;link rel="icon" type="image/x-icon" th:href="@{/images/favicon.ico}" /&gt;
+
+	&lt;!-- Common styles --&gt;
+
+	&lt;link rel="stylesheet" type="text/css" th:href="@{/styles/common.css}" /&gt;
+	&lt;link rel="stylesheet" type="text/css" th:href="@{/styles/form.css}" /&gt;
+
+	&lt;!-- View specific styles --&gt;
+
+	&lt;link rel="stylesheet" type="text/css" th:href="@{/styles/login-layout.css}" /&gt;
+
+	&lt;th:block th:include="${view} :: styles" /&gt;
+
+	&lt;!-- Common scripts --&gt;
+
+	&lt;!-- View specific scripts --&gt;
+
+	&lt;th:block th:include="${view} :: scripts" /&gt;
+
+&lt;/head&gt;
+&lt;body&gt;
+
+	&lt;div class="body"&gt;
+		&lt;div class="page"&gt;
+
+			&lt;div class="branding"&gt;
+
+				&lt;div class="company-branding" th:text="${company}"&gt;Some Default Company&lt;/div&gt;
+				&lt;div class="product-branding" th:text="${product}"&gt;Bootstrap&lt;/div&gt;
+
+			&lt;/div&gt;
+
+			&lt;div th:replace="${view} :: page"&gt;
+			&lt;/div&gt;
+		&lt;/div&gt;
+	&lt;/div&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+
+</pre>
+
+
+<h3>Setting up the "view"</h3>
+
+<p>Login view (login.xhtml) specifies various content components which will be included by the template while rendering full page.</p>
+<pre>
+&lt;!DOCTYPE html&gt;
+&lt;html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org"&gt;
+
+&lt;head th:fragment="styles"&gt;
+&lt;/head&gt;
+
+&lt;head th:fragment="scripts"&gt;
+&lt;/head&gt;
+
+&lt;body th:fragment="page"&gt;
+
+	&lt;form class="login-form" name="login-form" method="post" th:action="@{/login.json}"&gt;
+
+		&lt;h2 class="form-header"&gt;Customer Login&lt;/h2&gt;
+
+		&lt;div class="form-body"&gt;
+			&lt;div class="field-wrapper"&gt;
+				&lt;label&gt;&lt;input type="text" name="user-name" value="" placeholder="User Name" autocomplete="off" /&gt;&lt;/label&gt;
+			&lt;/div&gt;
+			&lt;div class="field-wrapper"&gt;
+				&lt;label&gt;&lt;span /&gt; &lt;input type="password" name="password" value="" placeholder="Password" autocomplete="off" /&gt;&lt;/label&gt;
+			&lt;/div&gt;
+		&lt;/div&gt;
+
+		&lt;div class="form-options"&gt;
+			&lt;a th:href="@{/forgot-password}"&gt;Forgot Password&lt;/a&gt;
+			&lt;a th:href="@{/sign-up}"&gt;Sign Up&lt;/a&gt;
+		&lt;/div&gt;
+
+		&lt;div class="form-footer"&gt;
+			&lt;input type="submit" value="Login" /&gt;
+			&lt;input type="reset" value="Cancel" /&gt;
+		&lt;/div&gt;
+	&lt;/form&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+
+</pre>
+
+<h3>Deployment</h3>
+
+<p>We will deploy our application on glassfish as it is the only application server that supports the MVC 1.0 draft
+	specification and comes bundled with its reference implementation. Once the application is deployed,
+	go to
+	<a href="http://localhost:8080/JavaEE/api/login">http://localhost:8080/JavaEE/api/login</a> for viewing the login page (assuming your application uses JavaEE as context path).
+</p>
+
+
+<h3>Suggestions ?</h3>
+
+<p>Please leave a comment for any suggestion.</p>
+
+<h3>Source Code</h3>
+
+<p>Please visit
+	<a href="https://github.com/kedar-joshi/Thymeleaf-JavaEE-MVC">https://github.com/kedar-joshi/Thymeleaf-JavaEE-MVC</a> for the sources
+</p>
+
+<h3>References</h3>
+
+<ol>
+
+	<li>For basic project structure
+		<a href="https://dzone.com/articles/java-ee-8-mvc-getting-started-with-ozark">https://dzone.com/articles/java-ee-8-mvc-getting-started-with-ozark</a>
+	</li>
+
+	<li>For JavaEE 8 reference <a href="https://javaee8.zeef.com/arjan.tijms">https://javaee8.zeef.com/arjan.tijms</a>
+	</li>
+
+
+	<li>For MVC 1.0 basics
+		<a href="http://www.bennet-schulz.com/2015/10/javaee-mvc-controllers.html">http://www.bennet-schulz.com/2015/10/javaee-mvc-controllers.html</a> and
+		<a href="http://www.mscharhag.com/java-ee-mvc/a-detailed-look-on-mvc-controllers">http://www.mscharhag.com/java-ee-mvc/a-detailed-look-on-mvc-controllers</a>
+	</li>
+
+	<li>MVC 1.0 reference homepage <a href="https://ozark.java.net/">https://ozark.java.net/</a></li>
+
+	<li>For Thymeleaf download and documentation
+		<a href="http://www.thymeleaf.org/download.html">http://www.thymeleaf.org/download.html</a> and
+		<a href="http://www.thymeleaf.org/doc/articles/layouts.html">http://www.thymeleaf.org/doc/articles/layouts.html</a>
+	</li>
+
+	<li>For Thyemleaf custom layouts
+		<a href="http://blog.codeleak.pl/2013/11/thymeleaf-template-layouts-in-spring.html">http://blog.codeleak.pl/2013/11/thymeleaf-template-layouts-in-spring.html</a>
+	</li>
+</ol>
+
 
 </body>
 </html>
